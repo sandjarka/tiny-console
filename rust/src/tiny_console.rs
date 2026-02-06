@@ -7,13 +7,13 @@ use godot::classes::{
     file_access::ModeFlags, CanvasLayer, Control, Engine, FileAccess, IObject, InputEvent, InputEventKey, InputMap, Os, PanelContainer, ProjectSettings, ResourceLoader, RichTextLabel, SceneTree,
     Theme, VBoxContainer,
 };
-use godot::global::{ease, remap, Error as GError, Key};
+use godot::global::{ease, remap, Key};
 use godot::prelude::*;
 
 use std::collections::HashMap;
 
 use crate::ascii_art;
-use crate::builtin_commands;
+use crate::builtin_commands::{self, BuiltinCommands};
 use crate::command_entry::CommandEntry;
 use crate::command_entry_highlighter::CommandEntryHighlighter;
 use crate::command_history::{self, CommandHistory, WrappingIterator};
@@ -43,11 +43,11 @@ pub struct TinyConsole {
 
     // Theme colors
     output_command_color: Color,
-    output_command_mention_color: Color,
+    pub(crate) output_command_mention_color: Color,
     output_error_color: Color,
-    output_warning_color: Color,
+    pub(crate) output_warning_color: Color,
     output_text_color: Color,
-    output_debug_color: Color,
+    pub(crate) output_debug_color: Color,
     entry_text_color: Color,
     entry_hint_color: Color,
     entry_command_found_color: Color,
@@ -58,9 +58,9 @@ pub struct TinyConsole {
     enabled: bool,
     initialized: bool,
     options: ConsoleOptions,
-    commands: HashMap<String, Callable>,
-    aliases: HashMap<String, Vec<String>>,
-    command_descriptions: HashMap<String, String>,
+    pub(crate) commands: HashMap<String, Callable>,
+    pub(crate) aliases: HashMap<String, Vec<String>>,
+    pub(crate) command_descriptions: HashMap<String, String>,
     argument_autocomplete_sources: HashMap<(String, usize), Callable>,
     history: CommandHistory,
     history_iter: WrappingIterator,
@@ -74,6 +74,9 @@ pub struct TinyConsole {
     // Pending command from signal callback — executed in on_process_frame
     // to avoid re-entrant borrow issues with #[func] dispatch.
     pending_command: Option<String>,
+    // Builtin commands object — holds all cmd_* implementations as #[func] methods
+    // on a separate RefCounted so they don't pollute TinyConsole's API.
+    builtin_commands: Option<Gd<BuiltinCommands>>,
 }
 
 // === Public API (exposed to GDScript via #[func]) ===
@@ -160,7 +163,9 @@ impl TinyConsole {
             }
 
             // Register builtin commands
-            builtin_commands::register(&mut s, &gd_ref);
+            let builtin = BuiltinCommands::new_gd();
+            builtin_commands::register(&mut s, &builtin);
+            s.builtin_commands = Some(builtin);
 
             // Greet
             if s.options.greet_user {
@@ -508,20 +513,12 @@ impl TinyConsole {
 
     // --- Formatting ---
 
-    #[func]
-    pub fn format_tip(&self, text: GString) -> GString {
-        let color = self.output_debug_color.to_html();
-        GString::from(format!("[i][color={}]{}[/color][/i]", color, text).as_str())
-    }
-
-    #[func]
-    pub fn format_name(&self, name: GString) -> GString {
+    pub(crate) fn format_name(&self, name: GString) -> GString {
         let color = self.output_command_mention_color.to_html();
         GString::from(format!("[color={}]{}[/color]", color, name).as_str())
     }
 
-    #[func]
-    pub fn usage(&mut self, command: GString) -> i32 {
+    pub(crate) fn usage(&mut self, command: GString) -> i32 {
         let cmd_str = command.to_string();
 
         // If it's an alias, show what it resolves to
@@ -625,13 +622,11 @@ impl TinyConsole {
         self.eval_inputs.remove(&name.to_string());
     }
 
-    #[func]
-    pub fn get_eval_input_names(&self) -> PackedStringArray {
+    pub(crate) fn get_eval_input_names(&self) -> PackedStringArray {
         self.eval_inputs.keys().filter(|k| *k != "_base_instance").map(|s| GString::from(s.as_str())).collect()
     }
 
-    #[func]
-    pub fn get_eval_inputs(&self) -> VarArray {
+    pub(crate) fn get_eval_inputs(&self) -> VarArray {
         let mut arr = VarArray::new();
         for (k, v) in &self.eval_inputs {
             if k != "_base_instance" {
@@ -646,231 +641,8 @@ impl TinyConsole {
         self.eval_inputs.insert("_base_instance".to_string(), object);
     }
 
-    #[func]
-    pub fn get_eval_base_instance(&self) -> Variant {
+    pub(crate) fn get_eval_base_instance(&self) -> Variant {
         self.eval_inputs.get("_base_instance").cloned().unwrap_or(Variant::nil())
-    }
-
-    // --- Builtin command implementations ---
-
-    #[func]
-    pub fn cmd_alias(&mut self, alias: GString, command: GString) {
-        let formatted = self.format_name(alias.clone());
-        let msg = format!("Adding {} => {}", formatted, command);
-        self.print_line_internal(&msg, false);
-        self.add_alias(alias, command);
-    }
-
-    #[func]
-    pub fn cmd_aliases(&mut self) {
-        let mut alias_names: Vec<String> = self.aliases.keys().cloned().collect();
-        alias_names.sort();
-        for alias in alias_names {
-            let argv = self.aliases.get(&alias).unwrap().clone();
-            let cmd_name = &argv[0];
-            let desc = self.command_descriptions.get(cmd_name).cloned().unwrap_or_default();
-            let color = self.output_command_mention_color.to_html();
-            let formatted_alias = format!("[color={}]{}[/color]", color, alias);
-            if desc.is_empty() {
-                self.print_line_internal(&formatted_alias, false);
-            } else {
-                let formatted_cmd = format!("[color={}]{}[/color]", color, cmd_name);
-                let rest = argv[1..].join(" ");
-                let debug_color = self.output_debug_color.to_html();
-                let tip = format!("[i][color={}] // {}[/color][/i]", debug_color, desc);
-                let msg = format!("{} is alias of: {} {} {}", formatted_alias, formatted_cmd, rest, tip);
-                self.print_line_internal(&msg, false);
-            }
-        }
-    }
-
-    #[func]
-    pub fn cmd_commands(&mut self) {
-        self.print_line_internal("Available commands:", false);
-        let mut names: Vec<String> = self.commands.keys().cloned().collect();
-        names.sort();
-        let color = self.output_command_mention_color.to_html();
-        for name in &names {
-            let desc = self.command_descriptions.get(name).cloned().unwrap_or_default();
-            let formatted = format!("[color={}]{}[/color]", color, name);
-            if desc.is_empty() {
-                self.print_line_internal(&formatted, false);
-            } else {
-                let msg = format!("{} -- {}", formatted, desc);
-                self.print_line_internal(&msg, false);
-            }
-        }
-    }
-
-    #[func]
-    pub fn cmd_eval(&mut self, expression: GString) {
-        let mut exp = godot::classes::Expression::new_gd();
-        let input_names = self.get_eval_input_names();
-        let err = exp.parse_ex(&expression).input_names(&input_names).done();
-        if err != GError::OK {
-            let err_text = exp.get_error_text();
-            self.error(err_text);
-            return;
-        }
-        let inputs = self.get_eval_inputs();
-        let base = self.get_eval_base_instance();
-        let base_obj: Option<Gd<godot::classes::Object>> = if base.is_nil() { None } else { base.try_to::<Gd<godot::classes::Object>>().ok() };
-
-        let result = if let Some(ref base_obj) = base_obj {
-            exp.execute_ex().inputs(&inputs).base_instance(base_obj).done()
-        } else {
-            exp.execute_ex().inputs(&inputs).done()
-        };
-
-        if !exp.has_execute_failed() {
-            if !result.is_nil() {
-                let msg = result.to_string();
-                self.print_line_internal(&msg, false);
-            }
-        } else {
-            let err_text = exp.get_error_text();
-            self.error(err_text);
-        }
-    }
-
-    #[func]
-    pub fn cmd_exec(&mut self, file: GString) {
-        let mut file_str = file.to_string();
-        if !file_str.ends_with(".lcs") {
-            file_str.push_str(".lcs");
-        }
-        let path: GString = GString::from(file_str.as_str());
-        if !FileAccess::file_exists(&path) {
-            file_str = format!("user://{}", file_str);
-        }
-        self.execute_script(GString::from(file_str.as_str()), true);
-    }
-
-    #[func]
-    pub fn cmd_fps_max(&mut self, limit: i32) {
-        if limit < 0 {
-            let current = Engine::singleton().get_max_fps();
-            if current == 0 {
-                self.print_line_internal("Framerate is unlimited.", false);
-            } else {
-                let msg = format!("Framerate is limited to {} FPS.", current);
-                self.print_line_internal(&msg, false);
-            }
-            return;
-        }
-        Engine::singleton().set_max_fps(limit);
-        if limit > 0 {
-            let msg = format!("Limiting framerate to {} FPS.", limit);
-            self.print_line_internal(&msg, false);
-        } else {
-            self.print_line_internal("Removing framerate limits.", false);
-        }
-    }
-
-    #[func]
-    pub fn cmd_fullscreen(&mut self) {
-        let tree = Self::get_scene_tree();
-        if let Some(viewport) = tree.get_root() {
-            if let Some(mut win) = viewport.get_window() {
-                let mode = win.get_mode();
-                if mode == godot::classes::window::Mode::WINDOWED {
-                    win.set_mode(godot::classes::window::Mode::FULLSCREEN);
-                    self.print_line_internal("Window switched to fullscreen mode.", false);
-                } else {
-                    win.set_mode(godot::classes::window::Mode::WINDOWED);
-                    self.print_line_internal("Window switched to windowed mode.", false);
-                }
-            }
-        }
-    }
-
-    #[func]
-    pub fn cmd_help(&mut self, command_name: GString) {
-        if command_name.is_empty() {
-            let color = self.output_command_mention_color.to_html();
-            let debug_color = self.output_debug_color.to_html();
-            let tip1 = format!("[i][color={}]Type [color={}]commands[/color] to list all available commands.[/color][/i]", debug_color, color);
-            self.print_line_internal(&tip1, false);
-            let tip2 = format!("[i][color={}]Type [color={}]help command[/color] to get more info about the command.[/color][/i]", debug_color, color);
-            self.print_line_internal(&tip2, false);
-        } else {
-            self.usage(command_name);
-        }
-    }
-
-    #[func]
-    pub fn cmd_log(&mut self, num_lines: i32) {
-        let fn_path = ProjectSettings::singleton().get_setting("debug/file_logging/log_path").to::<GString>();
-        if let Some(file) = FileAccess::open(&fn_path, ModeFlags::READ) {
-            let contents = file.get_as_text().to_string();
-            let mut lines: Vec<&str> = contents.split('\n').collect();
-            if let Some(last) = lines.last() {
-                if last.trim().is_empty() {
-                    lines.pop();
-                }
-            }
-            let start = lines.len().saturating_sub(num_lines.max(0) as usize);
-            for line in &lines[start..] {
-                let escaped = util::bbcode_escape(line);
-                self.print_line_internal(&escaped, false);
-            }
-        } else {
-            let msg = format!("Can't open file: {}", fn_path);
-            self.error(GString::from(msg.as_str()));
-        }
-    }
-
-    #[func]
-    pub fn cmd_quit(&self) {
-        let mut tree = Self::get_scene_tree();
-        tree.quit();
-    }
-
-    #[func]
-    pub fn cmd_unalias(&mut self, alias: GString) {
-        let name = alias.to_string();
-        if self.aliases.contains_key(&name) {
-            self.aliases.remove(&name);
-            self.print_line_internal("Alias removed.", false);
-        } else {
-            let color = self.output_warning_color.to_html();
-            let msg = format!("[color={}]WARNING:[/color] Alias not found.", color);
-            self.print_line_internal(&msg, false);
-        }
-    }
-
-    #[func]
-    pub fn cmd_vsync(&mut self, mode: i32) {
-        use godot::classes::display_server::VSyncMode;
-        if mode < 0 {
-            let current = godot::classes::DisplayServer::singleton().window_get_vsync_mode();
-            match current {
-                VSyncMode::DISABLED => self.print_line_internal("V-Sync: disabled.", false),
-                VSyncMode::ENABLED => self.print_line_internal("V-Sync: enabled.", false),
-                VSyncMode::ADAPTIVE => self.print_line_internal("Current V-Sync mode: adaptive.", false),
-                _ => {}
-            }
-            self.print_line_internal("Adjust V-Sync mode with an argument: 0 - disabled, 1 - enabled, 2 - adaptive.", false);
-        } else {
-            match mode {
-                0 => {
-                    self.print_line_internal("Changing to disabled.", false);
-                    godot::classes::DisplayServer::singleton().window_set_vsync_mode(VSyncMode::DISABLED);
-                }
-                1 => {
-                    self.print_line_internal("Changing to default V-Sync.", false);
-                    godot::classes::DisplayServer::singleton().window_set_vsync_mode(VSyncMode::ENABLED);
-                }
-                2 => {
-                    self.print_line_internal("Changing to adaptive V-Sync.", false);
-                    godot::classes::DisplayServer::singleton().window_set_vsync_mode(VSyncMode::ADAPTIVE);
-                }
-                _ => {
-                    self.error("Invalid mode.".into());
-                    self.print_line_internal("Acceptable modes: 0 - disabled, 1 - enabled, 2 - adaptive.", false);
-                }
-            }
-        }
     }
 
     // --- Signal callbacks ---
@@ -1071,7 +843,7 @@ impl TinyConsole {
         self.aliases.contains_key(name)
     }
 
-    fn get_scene_tree() -> Gd<SceneTree> {
+    pub(crate) fn get_scene_tree() -> Gd<SceneTree> {
         Engine::singleton().get_main_loop().unwrap().cast::<SceneTree>()
     }
 }
@@ -1079,7 +851,7 @@ impl TinyConsole {
 // === Private implementation ===
 
 impl TinyConsole {
-    fn print_line_internal(&mut self, line: &str, stdout: bool) {
+    pub(crate) fn print_line_internal(&mut self, line: &str, stdout: bool) {
         if self.silent {
             return;
         }
@@ -1273,8 +1045,12 @@ impl TinyConsole {
             }
         }
 
-        self.cmd_help(GString::new());
+        let color = self.output_command_mention_color.to_html();
         let debug_color = self.output_debug_color.to_html();
+        let tip1 = format!("[i][color={}]Type [color={}]commands[/color] to list all available commands.[/color][/i]", debug_color, color);
+        self.print_line_internal(&tip1, false);
+        let tip2 = format!("[i][color={}]Type [color={}]help command[/color] to get more info about the command.[/color][/i]", debug_color, color);
+        self.print_line_internal(&tip2, false);
         let tip = format!("[i][color={}]-----[/color][/i]", debug_color);
         self.print_line_internal(&tip, false);
     }
@@ -2006,6 +1782,9 @@ impl TinyConsole {
             tree.disconnect("process_frame", &Callable::from_object_method(&this, "on_process_frame"));
         }
 
+        // Drop builtin commands object before clearing callable collections
+        self.builtin_commands = None;
+
         // Clear callables and state that may reference external objects
         self.commands.clear();
         self.aliases.clear();
@@ -2090,6 +1869,7 @@ impl IObject for TinyConsole {
             open_speed: 5.0,
             is_open: false,
             pending_command: None,
+            builtin_commands: None,
         }
     }
 }

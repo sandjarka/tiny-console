@@ -2,10 +2,10 @@
 
 A fast, native in-game developer console for **Godot 4**, written in Rust via [gdext](https://github.com/godot-rust/gdext).
 
-Originally a port of [LimboConsole](https://github.com/limbonaut/limbo_console) by limbonaut, rewritten from GDScript to Rust for better performance and delivered as a GDExtension.
+Originally a port of [LimboConsole](https://github.com/limbonaut/limbo_console) by limbonaut, rewritten from GDScript to Rust and delivered as a GDExtension.
 
 > [!NOTE]
-> This plugin is in active development. Expect breaking changes.
+> This plugin is in active development. Expect changes.
 
 ## Features
 
