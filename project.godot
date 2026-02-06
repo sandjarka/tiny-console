@@ -19,6 +19,11 @@ run/main_scene="uid://b0cvni21hrt4d"
 config/features=PackedStringArray("4.6", "Forward Plus")
 config/icon="res://icon.svg"
 
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+
 [input]
 
 tiny_console_toggle={

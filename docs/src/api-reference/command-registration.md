@@ -19,16 +19,24 @@ Registers a command that can be invoked from the console. Arguments are automati
 
 ```gdscript
 func _ready() -> void:
-    TinyConsole.register_command(Callable(self, "greet"), "greet", "greet someone")
-
+    TinyConsole.register_command(greet, "greet", "greet someone")
+    
+# OR: TinyConsole.register_command(Callable(self, "greet"), "greet", "greet someone")    
+# OR: TinyConsole.re
+	
 func greet(name: String) -> void:
     TinyConsole.info("Hello, %s!" % name)
+```
+
+You can also pass a `Callable` explicitly:
+
+```gdscript
 ```
 
 Subcommands are supported by using spaces in the name:
 
 ```gdscript
-TinyConsole.register_command(Callable(self, "multiply"), "math multiply", "multiply two numbers")
+TinyConsole.register_command(multiply, "math multiply", "multiply two numbers")
 # Usage: math multiply 2 4
 ```
 
@@ -41,8 +49,7 @@ TinyConsole.add_argument_autocomplete_source(command: String, argument_index: in
 Registers a callable that provides autocomplete suggestions for a specific argument (index 0-4). The callable should return an `Array` of strings.
 
 ```gdscript
-TinyConsole.add_argument_autocomplete_source("teleport", 0,
-    Callable(self, "get_locations"))
+TinyConsole.add_argument_autocomplete_source("teleport", 0, get_locations)
 
 func get_locations() -> Array:
     return ["entrance", "caves", "boss"]

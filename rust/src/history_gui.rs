@@ -266,7 +266,7 @@ impl IPanel for HistoryGui {
             display_count: 0,
             offset: 0,
             sub_index: 0,
-            highlight_color: Color::from_rgba(0.3, 0.3, 0.4, 0.6),
+            highlight_color: Color::from_rgba(1.0, 1.0, 1.0, 0.12),
         }
     }
 

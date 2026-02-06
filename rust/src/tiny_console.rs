@@ -572,13 +572,9 @@ impl TinyConsole {
                 }
                 arg_lines.push_str(&format!("  {}: {}{}\n", arg_name, type_name, def_spec));
 
-                let key = (actual_cmd.clone(), i);
-                if let Some(source) = self.argument_autocomplete_sources.get(&key) {
-                    let result = source.callv(&VarArray::new());
-                    if let Some(values) = variant_to_string_vec(&result) {
-                        if !values.is_empty() {
-                            values_lines.push_str(&format!(" {}: {}\n", arg_name, values.join(", ")));
-                        }
+                if let Some(values) = self.get_autocomplete_values(&actual_cmd, i) {
+                    if !values.is_empty() {
+                        values_lines.push_str(&format!(" {}: {}\n", arg_name, values.join(", ")));
                     }
                 }
             }
@@ -1696,26 +1692,23 @@ impl TinyConsole {
         if argv.is_empty() {
             return;
         }
-        let command = &argv[0];
+        let command = argv[0].clone();
         let last_arg = argv.len() - 1;
-        let key = (command.clone(), last_arg - 1);
+        let arg_index = last_arg - 1;
 
-        if let Some(source) = self.argument_autocomplete_sources.get(&key).cloned() {
-            let result = source.callv(&VarArray::new());
-            if let Some(values) = variant_to_string_vec(&result) {
-                let entry_text = self.get_entry_text();
-                let typed_arg = &argv[last_arg];
-                let mut matches = Vec::new();
-                for val_str in &values {
-                    if val_str.starts_with(typed_arg) {
-                        let prefix_len = entry_text.len() - typed_arg.len();
-                        let full_match = format!("{}{}", &entry_text[..prefix_len], val_str);
-                        matches.push(full_match);
-                    }
+        if let Some(values) = self.get_autocomplete_values(&command, arg_index) {
+            let entry_text = self.get_entry_text();
+            let typed_arg = &argv[last_arg];
+            let mut matches = Vec::new();
+            for val_str in &values {
+                if val_str.starts_with(typed_arg) {
+                    let prefix_len = entry_text.len() - typed_arg.len();
+                    let full_match = format!("{}{}", &entry_text[..prefix_len], val_str);
+                    matches.push(full_match);
                 }
-                matches.sort();
-                self.autocomplete_matches.extend(matches);
             }
+            matches.sort();
+            self.autocomplete_matches.extend(matches);
         }
     }
 
@@ -1807,14 +1800,11 @@ impl TinyConsole {
         let mut any_corrected = false;
 
         for i in 1..argv.len() {
-            let key = (actual_cmd.clone(), i);
-            if let Some(source) = self.argument_autocomplete_sources.get(&key).cloned() {
-                let result = source.callv(&VarArray::new());
-                if let Some(values) = variant_to_string_vec(&result) {
-                    if let Some(hit) = util::fuzzy_match_string(&argv[i], 2, &values) {
-                        corrected_argv[i] = hit;
-                        any_corrected = true;
-                    }
+            let arg_index = i - 1;
+            if let Some(values) = self.get_autocomplete_values(&actual_cmd, arg_index) {
+                if let Some(hit) = util::fuzzy_match_string(&argv[i], 2, &values) {
+                    corrected_argv[i] = hit;
+                    any_corrected = true;
                 }
             }
         }
@@ -1831,6 +1821,22 @@ impl TinyConsole {
             let suggest = corrected_argv.join(" ").trim().to_string();
             self.autocomplete_matches.push(suggest);
         }
+    }
+
+    /// Get autocomplete values for a command argument.
+    /// Handles builtin commands (like `help`) inline to avoid re-entrant borrow panics,
+    /// and calls external callables for user-registered sources.
+    fn get_autocomplete_values(&mut self, command: &str, arg_index: usize) -> Option<Vec<String>> {
+        // Builtin: help command uses command names directly
+        if command == "help" && arg_index == 0 {
+            return Some(self.get_all_command_names_with_aliases());
+        }
+        let key = (command.to_string(), arg_index);
+        if let Some(source) = self.argument_autocomplete_sources.get(&key).cloned() {
+            let result = source.callv(&VarArray::new());
+            return variant_to_string_vec(&result);
+        }
+        None
     }
 
     fn get_all_command_names_with_aliases(&self) -> Vec<String> {
@@ -2055,17 +2061,17 @@ impl IObject for TinyConsole {
             history_gui: None,
             previous_gui_focus: None,
 
-            output_command_color: Color::WHITE,
-            output_command_mention_color: Color::WHITE,
+            output_command_color: Color::from_rgba(0.6, 0.85, 0.45, 1.0),
+            output_command_mention_color: Color::from_rgba(0.337, 0.62, 1.0, 1.0),
             output_error_color: Color::from_rgba(1.0, 0.3, 0.3, 1.0),
-            output_warning_color: Color::from_rgba(1.0, 1.0, 0.3, 1.0),
-            output_text_color: Color::WHITE,
-            output_debug_color: Color::from_rgba(0.6, 0.6, 0.6, 1.0),
-            entry_text_color: Color::WHITE,
-            entry_hint_color: Color::from_rgba(0.5, 0.5, 0.5, 1.0),
-            entry_command_found_color: Color::from_rgba(0.73, 0.90, 0.49, 1.0),
-            entry_subcommand_color: Color::from_rgba(0.58, 0.90, 0.80, 1.0),
-            entry_command_not_found_color: Color::from_rgba(1.0, 0.2, 0.2, 1.0),
+            output_warning_color: Color::from_rgba(1.0, 0.7, 0.3, 1.0),
+            output_text_color: Color::from_rgba(1.0, 1.0, 1.0, 0.7),
+            output_debug_color: Color::from_rgba(1.0, 1.0, 1.0, 0.35),
+            entry_text_color: Color::from_rgba(1.0, 1.0, 1.0, 0.7),
+            entry_hint_color: Color::from_rgba(1.0, 1.0, 1.0, 0.35),
+            entry_command_found_color: Color::from_rgba(0.6, 0.85, 0.45, 1.0),
+            entry_subcommand_color: Color::from_rgba(0.337, 0.62, 1.0, 1.0),
+            entry_command_not_found_color: Color::from_rgba(1.0, 0.3, 0.3, 1.0),
 
             enabled: true,
             initialized: false,

@@ -11,17 +11,14 @@ func _ready() -> void:
 
 	# Game-like commands
 	TinyConsole.register_command(set_score, "set_score", "set player score")
+	TinyConsole.add_argument_autocomplete_source("set_score", 0 ,score_suggestions) # Autocomplete source for set_score
 	TinyConsole.register_command(get_score, "get_score", "display current score")
 	TinyConsole.register_command(set_player_name, "set_player_name", "set player name")
 	TinyConsole.register_command(greet, "greet", "greet the player")
 	TinyConsole.register_command(roll_dice, "roll_dice", "roll an N-sided die")
 	TinyConsole.register_command(countdown, "countdown", "print countdown from N")
-	TinyConsole.register_command(repeat, "repeat", "repeat a message N times")
 	TinyConsole.register_command(status, "status", "show all game state")
 
-	# Autocomplete source for set_score
-	TinyConsole.add_argument_autocomplete_source("set_score", 0,
-		Callable(self, "score_suggestions"))
 
 func multiply(a: float, b: float) -> void:
 	TinyConsole.info("%.2f * %.2f = %.2f" % [a, b, a * b])
@@ -60,9 +57,6 @@ func countdown(n: int) -> void:
 	for i in range(n, 0, -1):
 		TinyConsole.info(str(i) + "...")
 	TinyConsole.info("Go!")
-
-func repeat(message: String) -> void:
-	TinyConsole.info(message)
 
 func status() -> void:
 	TinyConsole.info("--- Game Status ---")

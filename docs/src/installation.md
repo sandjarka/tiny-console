@@ -9,10 +9,13 @@ Toggle the console with the **backtick** key (`` ` ``, the key to the left of `1
 
 ```gdscript
 func _ready() -> void:
-    TinyConsole.register_command(Callable(self, "multiply"), "multiply", "multiply two numbers")
+    TinyConsole.register_command(multiply, "multiply", "multiply two numbers")
 
 func multiply(a: float, b: float) -> void:
     TinyConsole.info("%.2f * %.2f = %.2f" % [a, b, a * b])
+    
+# OR: TinyConsole.register_command(Callable(self, "multiply"), "multiply", "multiply two numbers")    
+# OR: TinyConsole.register_command(func(a: float, b: float) -> void: TinyConsole.info("%.2f * %.2f = %.2f" % [a, b, a * b]), "multiply", "multiply two numbers")        
 ```
 
 Type `multiply 2 4` in the console to see the result.
@@ -20,7 +23,7 @@ Type `multiply 2 4` in the console to see the result.
 You can also specify a command as a subcommand:
 
 ```gdscript
-TinyConsole.register_command(Callable(self, "multiply"), "math multiply", "multiply two numbers")
+TinyConsole.register_command(multiply, "math multiply", "multiply two numbers")
 # Usage: math multiply 2 4
 ```
 
@@ -31,9 +34,8 @@ The parent command (`math`) doesn't need to exist.
 Autocompletion works for command names and history out of the box. You can also provide custom autocomplete sources for specific arguments:
 
 ```gdscript
-TinyConsole.register_command(Callable(self, "teleport"), "teleport", "teleport to a location")
-TinyConsole.add_argument_autocomplete_source("teleport", 0,
-    Callable(self, "get_locations"))
+TinyConsole.register_command(teleport, "teleport", "teleport to a location")
+TinyConsole.add_argument_autocomplete_source("teleport", 0, get_locations)
 
 func get_locations() -> Array:
     return ["entrance", "caves", "boss"]

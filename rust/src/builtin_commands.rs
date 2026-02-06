@@ -38,11 +38,6 @@ pub fn register(console: &mut TinyConsole, this: &Gd<TinyConsole>) {
     cmd!(console, this, cmd_vsync, "vsync", "adjust V-Sync");
     cmd!(console, this, erase_history, "erase_history", "erases current history and persisted history");
 
-    // Add autocomplete source for help command
-    let names_callable = Callable::from_object_method(this, "get_command_names").bindv(&{
-        let mut arr = VarArray::new();
-        arr.push(&true.to_variant());
-        arr
-    });
-    console.add_argument_autocomplete_source("help".into(), 1, names_callable);
+    // Note: help command autocomplete is handled inline in get_autocomplete_values()
+    // to avoid re-entrant borrow panic (calling get_command_names on self while self is &mut borrowed).
 }

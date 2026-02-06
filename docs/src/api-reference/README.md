@@ -3,7 +3,7 @@
 The `TinyConsole` singleton is available globally in GDScript. All methods below are called on `TinyConsole`.
 
 ```gdscript
-TinyConsole.register_command(Callable(self, "my_func"), "my_command", "description")
+TinyConsole.register_command(my_func, "my_command", "description")
 TinyConsole.info("Hello from the console!")
 ```
 
