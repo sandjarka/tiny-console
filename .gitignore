@@ -1,0 +1,16 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# Editor
+.idea
+.claude
+
+# Rust
+/rust/target
+
+# Docs
+/docs/book
+
+# Windows junk
+nul

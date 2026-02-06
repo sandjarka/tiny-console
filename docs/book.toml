@@ -1,0 +1,7 @@
+[book]
+title = "Tiny Console"
+language = "en"
+src = "src"
+
+[output.html]
+no-section-label = true
