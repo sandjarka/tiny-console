@@ -88,22 +88,22 @@ jobs:
           cp artifacts/macos/libtiny_console.dylib staging/addons/tiny_console/libs/
 
           # Write release .gdextension with relative libs/ paths
-          cat > staging/addons/tiny_console/tiny_console.gdextension << 'GDEXT'
-[configuration]
-entry_symbol = "gdext_rust_init"
-compatibility_minimum = 4.1
-reloadable = true
-
-[libraries]
-linux.debug.x86_64 =     "libs/libtiny_console.so"
-linux.release.x86_64 =   "libs/libtiny_console.so"
-windows.debug.x86_64 =   "libs/tiny_console.dll"
-windows.release.x86_64 = "libs/tiny_console.dll"
-macos.debug =             "libs/libtiny_console.dylib"
-macos.release =           "libs/libtiny_console.dylib"
-macos.debug.arm64 =       "libs/libtiny_console.dylib"
-macos.release.arm64 =     "libs/libtiny_console.dylib"
-GDEXT
+          printf '%s\n' \
+            '[configuration]' \
+            'entry_symbol = "gdext_rust_init"' \
+            'compatibility_minimum = 4.1' \
+            'reloadable = true' \
+            '' \
+            '[libraries]' \
+            'linux.debug.x86_64 =     "libs/libtiny_console.so"' \
+            'linux.release.x86_64 =   "libs/libtiny_console.so"' \
+            'windows.debug.x86_64 =   "libs/tiny_console.dll"' \
+            'windows.release.x86_64 = "libs/tiny_console.dll"' \
+            'macos.debug =             "libs/libtiny_console.dylib"' \
+            'macos.release =           "libs/libtiny_console.dylib"' \
+            'macos.debug.arm64 =       "libs/libtiny_console.dylib"' \
+            'macos.release.arm64 =     "libs/libtiny_console.dylib"' \
+            > staging/addons/tiny_console/tiny_console.gdextension
 
       - name: Create zip
         working-directory: staging
