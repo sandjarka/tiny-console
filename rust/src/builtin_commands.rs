@@ -271,8 +271,6 @@ impl BuiltinCommands {
 }
 
 /// Register all builtin commands on TinyConsole.
-/// Uses explicit Callable::from_object_method calls — no macro — so that Godot's method
-/// introspection works naturally and the pattern is clear for anyone adding new commands.
 pub fn register(console: &mut TinyConsole, builtin: &Gd<BuiltinCommands>) {
     let register = |console: &mut TinyConsole, method: &str, name: &str, desc: &str| {
         let callable = Callable::from_object_method(builtin, method);

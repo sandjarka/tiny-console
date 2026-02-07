@@ -14,4 +14,5 @@
     - [Aliases](./api-reference/aliases.md)
     - [Expression Evaluation](./api-reference/eval.md)
     - [Signals](./api-reference/signals.md)
+- [Using with Other Languages](./other-languages.md)
 - [Credits](./credits.md)

@@ -8,29 +8,31 @@ mod history_gui;
 mod tiny_console;
 mod util;
 
-use godot::init::InitStage;
 use godot::prelude::*;
 
 use crate::tiny_console::TinyConsole;
 
 struct SGConsole;
 
-/// #[class(singleton)] on TinyConsole handles register/unregister/free automatically.
-/// We only need to defer initialize() to MainLoop stage when the scene tree is ready.
 #[gdextension]
 unsafe impl ExtensionLibrary for SGConsole {
-    fn on_stage_init(stage: InitStage) {
-        if stage == InitStage::MainLoop {
-            // Call initialize_impl directly with the Gd handle.
-            // This avoids going through #[func] dispatch which would hold
-            // a borrow that conflicts with internal bind_mut/drop cycles.
-            let mut singleton = TinyConsole::singleton();
-            TinyConsole::initialize_impl(&mut singleton);
+    #[allow(deprecated)]
+    fn on_level_init(level: InitLevel) {
+        if level == InitLevel::Scene {
+            // Defer initialization until the main loop is ready.
+            // Using Callable::from_fn so we get a fresh Gd handle with no active borrows.
+            let callable = Callable::from_fn(&TinyConsole::class_id().to_gstring(), |_args| {
+                let mut singleton = TinyConsole::singleton();
+                TinyConsole::initialize_impl(&mut singleton);
+                Variant::nil()
+            });
+            callable.call_deferred(&[]);
         }
     }
 
-    fn on_stage_deinit(stage: InitStage) {
-        if stage == InitStage::MainLoop {
+    #[allow(deprecated)]
+    fn on_level_deinit(level: InitLevel) {
+        if level == InitLevel::Scene {
             let mut singleton = TinyConsole::singleton();
             if singleton.bind().is_initialized() {
                 singleton.bind_mut().cleanup();

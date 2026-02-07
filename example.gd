@@ -19,7 +19,6 @@ func _ready() -> void:
 	TinyConsole.register_command(countdown, "countdown", "print countdown from N")
 	TinyConsole.register_command(status, "status", "show all game state")
 
-
 func multiply(a: float, b: float) -> void:
 	TinyConsole.info("%.2f * %.2f = %.2f" % [a, b, a * b])
 
