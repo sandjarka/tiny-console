@@ -1,0 +1,135 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - name: linux
+            os: ubuntu-latest
+            targets: x86_64-unknown-linux-gnu
+            artifact: libtiny_console.so
+            artifact-path: rust/target/x86_64-unknown-linux-gnu/release/libtiny_console.so
+
+          - name: windows
+            os: windows-latest
+            targets: x86_64-pc-windows-msvc
+            artifact: tiny_console.dll
+            artifact-path: rust/target/x86_64-pc-windows-msvc/release/tiny_console.dll
+
+          - name: macos
+            os: macos-latest
+            targets: x86_64-apple-darwin,aarch64-apple-darwin
+            artifact: libtiny_console.dylib
+            artifact-path: libtiny_console.dylib
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.targets }}
+
+      - name: Build (Linux/Windows)
+        if: matrix.name != 'macos'
+        working-directory: rust
+        run: cargo build --release --target ${{ matrix.targets }}
+
+      - name: Build (macOS universal)
+        if: matrix.name == 'macos'
+        working-directory: rust
+        run: |
+          cargo build --release --target x86_64-apple-darwin
+          cargo build --release --target aarch64-apple-darwin
+          lipo -create \
+            target/x86_64-apple-darwin/release/libtiny_console.dylib \
+            target/aarch64-apple-darwin/release/libtiny_console.dylib \
+            -output ../libtiny_console.dylib
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ matrix.artifact-path }}
+
+  package:
+    name: Package
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Assemble release archive
+        run: |
+          mkdir -p staging/addons/tiny_console/libs
+
+          # Copy addon resources
+          cp -r addons/tiny_console/res staging/addons/tiny_console/
+
+          # Copy binaries
+          cp artifacts/linux/libtiny_console.so   staging/addons/tiny_console/libs/
+          cp artifacts/windows/tiny_console.dll    staging/addons/tiny_console/libs/
+          cp artifacts/macos/libtiny_console.dylib staging/addons/tiny_console/libs/
+
+          # Write release .gdextension with relative libs/ paths
+          cat > staging/addons/tiny_console/tiny_console.gdextension << 'GDEXT'
+[configuration]
+entry_symbol = "gdext_rust_init"
+compatibility_minimum = 4.1
+reloadable = true
+
+[libraries]
+linux.debug.x86_64 =     "libs/libtiny_console.so"
+linux.release.x86_64 =   "libs/libtiny_console.so"
+windows.debug.x86_64 =   "libs/tiny_console.dll"
+windows.release.x86_64 = "libs/tiny_console.dll"
+macos.debug =             "libs/libtiny_console.dylib"
+macos.release =           "libs/libtiny_console.dylib"
+macos.debug.arm64 =       "libs/libtiny_console.dylib"
+macos.release.arm64 =     "libs/libtiny_console.dylib"
+GDEXT
+
+      - name: Create zip
+        working-directory: staging
+        run: |
+          TAG="${GITHUB_REF_NAME:-dev}"
+          zip -r "../tiny-console-${TAG}.zip" addons/
+
+      - name: Upload archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-archive
+          path: tiny-console-*.zip
+
+  release:
+    name: Release
+    needs: package
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Download archive
+        uses: actions/download-artifact@v4
+        with:
+          name: release-archive
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: tiny-console-*.zip
+          generate_release_notes: true
