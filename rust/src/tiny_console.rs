@@ -25,6 +25,9 @@ const THEME_DEFAULT: &str = "res://addons/tiny_console/res/default_theme.tres";
 const MAX_SUBCOMMANDS: usize = 4;
 const CONSOLE_COLORS_THEME_TYPE: &str = "ConsoleColors";
 
+/// In-game console singleton for registering commands, printing output, and executing scripts.
+///
+/// Access via the global `TinyConsole` singleton. Configure behavior in Project Settings under `tiny_console/`.
 #[derive(GodotClass)]
 #[class(base=Object, singleton)]
 pub struct TinyConsole {
@@ -83,6 +86,7 @@ pub struct TinyConsole {
 
 #[godot_api]
 impl TinyConsole {
+    /// Emitted when the console is shown or hidden.
     #[signal]
     fn toggled(is_shown: bool);
 
@@ -201,6 +205,7 @@ impl TinyConsole {
 
     // --- Console visibility ---
 
+    /// Opens the console.
     #[func]
     pub fn open_console(&mut self) {
         if self.enabled {
@@ -212,6 +217,7 @@ impl TinyConsole {
         }
     }
 
+    /// Closes the console.
     #[func]
     pub fn close_console(&mut self) {
         if self.enabled {
@@ -228,11 +234,13 @@ impl TinyConsole {
         }
     }
 
+    /// Returns `true` if the console is currently open.
     #[func]
     pub fn is_console_open(&self) -> bool {
         self.is_open
     }
 
+    /// Toggles the console open or closed.
     #[func]
     pub fn toggle_console(&mut self) {
         if self.is_open {
@@ -242,6 +250,7 @@ impl TinyConsole {
         }
     }
 
+    /// Toggles the history search panel. When opened, filters history entries by the current input text.
     #[func]
     pub fn toggle_history(&mut self) {
         let was_visible = self.history_gui.as_ref().map_or(false, |hg| hg.is_visible());
@@ -260,6 +269,7 @@ impl TinyConsole {
         }
     }
 
+    /// Clears all output from the console.
     #[func]
     pub fn clear_console(&mut self) {
         if let Some(ref mut output) = self.output {
@@ -267,6 +277,7 @@ impl TinyConsole {
         }
     }
 
+    /// Clears command history from memory and deletes the history file.
     #[func]
     pub fn erase_history(&mut self) {
         self.history.clear();
@@ -278,12 +289,14 @@ impl TinyConsole {
 
     // --- Output methods ---
 
+    /// Prints an informational message to the console.
     #[func]
     pub fn info(&mut self, line: GString) {
         let stdout = self.options.print_to_stdout;
         self.print_line_internal(&line.to_string(), stdout);
     }
 
+    /// Prints an error message prefixed with `ERROR:` using the error color.
     #[func]
     pub fn error(&mut self, line: GString) {
         let color = self.output_error_color.to_html();
@@ -292,6 +305,7 @@ impl TinyConsole {
         self.print_line_internal(&msg, stdout);
     }
 
+    /// Prints a warning message prefixed with `WARNING:` using the warning color.
     #[func]
     pub fn warn(&mut self, line: GString) {
         let color = self.output_warning_color.to_html();
@@ -300,6 +314,7 @@ impl TinyConsole {
         self.print_line_internal(&msg, stdout);
     }
 
+    /// Prints a debug message prefixed with `DEBUG:` using the debug color.
     #[func]
     pub fn debug_msg(&mut self, line: GString) {
         let color = self.output_debug_color.to_html();
@@ -308,6 +323,7 @@ impl TinyConsole {
         self.print_line_internal(&msg, stdout);
     }
 
+    /// Prints text surrounded by an ASCII art box.
     #[func]
     pub fn print_boxed(&mut self, line: GString) {
         let lines = ascii_art::str_to_boxed_art(&line.to_string());
@@ -317,12 +333,14 @@ impl TinyConsole {
         }
     }
 
+    /// Prints a raw line to the console. Supports BBCode tags for rich text formatting.
     #[func]
     pub fn print_line(&mut self, line: GString) {
         let stdout = self.options.print_to_stdout;
         self.print_line_internal(&line.to_string(), stdout);
     }
 
+    /// Prints a raw line to the console with explicit control over stdout mirroring.
     #[func]
     pub fn print_line_ex(&mut self, line: GString, stdout: bool) {
         self.print_line_internal(&line.to_string(), stdout);
@@ -330,6 +348,10 @@ impl TinyConsole {
 
     // --- Command registration ---
 
+    /// Registers a command that can be invoked from the console.
+    /// Arguments are automatically parsed from the callable's signature.
+    /// Supported types: `bool`, `int`, `float`, `String`, `Vector2`, `Vector3`, `Vector4`.
+    /// Use spaces in the name for subcommands (e.g. `"math multiply"`).
     #[func]
     pub fn register_command(&mut self, callable: Callable, name: GString, desc: GString) {
         let name_str = name.to_string();
@@ -363,6 +385,7 @@ impl TinyConsole {
         self.command_descriptions.insert(cmd_name, desc.to_string());
     }
 
+    /// Unregisters a previously registered command and removes its autocomplete sources.
     #[func]
     pub fn unregister_command(&mut self, name: GString) {
         let name_str = name.to_string();
@@ -377,16 +400,19 @@ impl TinyConsole {
         }
     }
 
+    /// Returns `true` if a command with the given name is registered.
     #[func]
     pub fn has_command(&self, name: GString) -> bool {
         self.commands.contains_key(&name.to_string())
     }
 
+    /// Returns `true` if an alias with the given name exists.
     #[func]
     pub fn has_alias(&self, name: GString) -> bool {
         self.aliases.contains_key(&name.to_string())
     }
 
+    /// Returns a sorted list of all registered command names. If `include_aliases` is `true`, alias names are included.
     #[func]
     pub fn get_command_names(&self, include_aliases: bool) -> PackedStringArray {
         let mut names: Vec<String> = self.commands.keys().cloned().collect();
@@ -397,6 +423,7 @@ impl TinyConsole {
         names.iter().map(|s| GString::from(s.as_str())).collect()
     }
 
+    /// Returns the description string for the given command, or an empty string if not found.
     #[func]
     pub fn get_command_description(&self, name: GString) -> GString {
         GString::from(self.command_descriptions.get(&name.to_string()).map(|s| s.as_str()).unwrap_or(""))
@@ -404,22 +431,26 @@ impl TinyConsole {
 
     // --- Aliases ---
 
+    /// Creates an alias that expands to the given command string when invoked.
     #[func]
     pub fn add_alias(&mut self, alias: GString, command_to_run: GString) {
         let argv = self.parse_command_line(&command_to_run.to_string());
         self.aliases.insert(alias.to_string(), argv);
     }
 
+    /// Removes an alias by name.
     #[func]
     pub fn remove_alias(&mut self, name: GString) {
         self.aliases.remove(&name.to_string());
     }
 
+    /// Returns a list of all alias names.
     #[func]
     pub fn get_aliases(&self) -> PackedStringArray {
         self.aliases.keys().map(|s| GString::from(s.as_str())).collect()
     }
 
+    /// Returns the parsed argument vector for an alias, or the alias name itself if not found.
     #[func]
     pub fn get_alias_argv(&self, alias: GString) -> PackedStringArray {
         let alias_str = alias.to_string();
@@ -435,6 +466,8 @@ impl TinyConsole {
 
     // --- Autocomplete sources ---
 
+    /// Registers a callable that provides autocomplete suggestions for a specific argument of a command.
+    /// The argument index must be between 0 and 4. The callable should return an `Array` of suggestions.
     #[func]
     pub fn add_argument_autocomplete_source(&mut self, command: GString, argument: i32, source: Callable) {
         let cmd = command.to_string();
@@ -459,6 +492,7 @@ impl TinyConsole {
     // TinyConsole (e.g. TinyConsole.info()), so we must release the
     // mutable borrow before invoking callv().
 
+    /// Executes a command string as if the user typed it into the console.
     #[func]
     pub fn execute_command(&self, command_line: GString) {
         let mut gd = self.to_gd();
@@ -470,6 +504,7 @@ impl TinyConsole {
         .call_deferred(&[]);
     }
 
+    /// Executes a command string without echoing the input to the console.
     #[func]
     pub fn execute_command_silent(&self, command_line: GString) {
         let mut gd = self.to_gd();
@@ -481,6 +516,7 @@ impl TinyConsole {
         .call_deferred(&[]);
     }
 
+    /// Loads a script file and executes each line as a command. If `silent` is `true`, input lines are not echoed.
     #[func]
     pub fn execute_script(&self, file: GString, silent: bool) {
         let mut gd = self.to_gd();
@@ -612,11 +648,13 @@ impl TinyConsole {
 
     // --- Eval ---
 
+    /// Adds a variable to the `eval` expression context, accessible by the given name.
     #[func]
     pub fn add_eval_input(&mut self, name: GString, value: Variant) {
         self.eval_inputs.insert(name.to_string(), value);
     }
 
+    /// Removes a variable from the `eval` expression context.
     #[func]
     pub fn remove_eval_input(&mut self, name: GString) {
         self.eval_inputs.remove(&name.to_string());
@@ -636,6 +674,7 @@ impl TinyConsole {
         arr
     }
 
+    /// Sets the base object for `eval` expressions, allowing direct method calls via `self`.
     #[func]
     pub fn set_eval_base_instance(&mut self, object: Variant) {
         self.eval_inputs.insert("_base_instance".to_string(), object);
